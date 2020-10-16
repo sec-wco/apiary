@@ -1,0 +1,348 @@
+FORMAT: 1A
+HOST: http://polls.apiblueprint.org/
+
+# Web Checkout Service API
+This document describes all API specification for global web payment server system. Service developers are most suitable consumer of this document.
+###### PG
+Payment Gateway
+###### Web SDK
+Web development kit which will be included into partners’ web system to integrate with Samsung pay payment system
+###### Web UI
+Samsung pay web page for account binding
+
+## Document History
+> ##### 2017.Feb.14
+    > - Created (version 1.0)
+
+> ##### 2017.Feb.20
+    > - updated 'Appendix'
+    > - updated '2.1 Notification'
+    > - updated resources URL 
+    >   - added prefix
+    >   - changed resource
+
+> ##### 2017.Mar.22
+    > - URL prefix update
+    > - 1.1 Create Transaction
+    >   - removed unused fields
+
+> ##### 2017.May.10
+    > - 1.1 Create Transaction
+    >   - added description for 'paymentDetails.amount'
+    >   - added a new field 'paymentDetails.amount.option'
+    >   - changed requirement of a field 'paymentDetails.orderNumber' to be required
+    >   - added 'paymentDetails.recurring'
+    > - 2.1 Notification
+    >   - added a new query parameter 'id' 
+
+> ##### 2017.June.29
+    > - 1.2 Get Payment Credential
+    >   - added a new query parameter 'serviceId'
+
+> ##### 2017.Aug.08
+    > - 1.1 Create Transaction
+    >   -   added new response fields 'encInfo.keyId', 'encInfo.mod', 'encInfo.exp'
+
+> ##### 2017.Sept.27
+    > - updated request headers
+    >    - dmid, mid, did
+    > - updated error codes of all APIs
+
+> ##### 2017.Sept.28
+    > - 1.1 Create Transaction
+    >   - updated a field 'callback' to be required.
+
+> ##### 2017.Nov.3
+    > - added a new error 'OPM1N1003' for all POST method APIs
+
+> ##### 2017.Nov.15
+    > - 2.1 Notification
+    >    - added a new status 'ERRED' to 'payment.status'
+
+> ##### 2018.Oct.04
+    > - 1.1 Create Transaction
+    >   - added description for ‘paymentDetails.orderNumber‘
+
+> ##### 2018.Dec.18
+    > - 1.1 Create Transaction, 1.2 Get Payment Credential 
+    >   - added a new object ‘features’ for add-on features: DSRP, SOAPP, COMBOCARD
+
+> ##### 2019.Sep.23
+    > - 1.1 Create Transaction
+    >   - modified 'features[i].option' for a feature 'SoApp'
+    >       - removed a option 'ALL(Default)'
+    >       - added new options 'FIRST_NAME', 'LAST_NAME'
+
+> ##### 2020.Mar.23
+    > - 1.1 Create Transaction
+    >   - changed requirement of ‘paymentDetails.merchant.url’ to be required
+
+## User experiences
+### Payment through PC Web
+Consumer can provide ‘Samsung pay’ option for payment to user on their web site. User can select ‘Samsung pay’ option to pay then payment requesting push message will be arrived to user’s device and the payment can be confirmed by user fingerprint authentication. The generated payment cryptogram and data will be passed to consumer and finally bypassed to their PG (payment gateway) and card network side for transaction approval.
+### Payment through Mobile Web
+If user accesses to consumer’s web site through mobile web browser, Samsung pay web SDK can detect this environment. In this case, account binding process can be done on device level because the web browser and Samsung pay application run on same device. You can see detail steps of device level account binding in following figures.
+
+## Resource
+### URL Scheme
+Resource URL is composed of host, API version, and resource path. Use plural nouns, preferably all in lower cases.
+###### https://api.server.host/ops/v1/transactions/{transactionId}
+### Format
+REST API of online payment service supports only JSON resource representation.
+
+## General rules
+### Query Parameters
+If any query parameter is required to define specific retrieving option, please add the parameter with defined key as following format.
+###### https://{endpoint}/{module}/{version}/{resource}?{key1}={value1}&{key2}={value2}...
+
+### Common Headers
+Following common headers are required to be included in all requests. The ones marked ‘only for device’ is only mandatory for the requests from device. The others are required to internal servers or partners integration also. If any one of these header is not included, TR may return the mandatory parameter missing error with a 400 Bad Request HTTP status.
+
+###### Request
+| Key        | Value                           | Required |
+|:-----------|---------------------------------|----------|
+|Content-Type| application/json                | Required |
+|X-Request-Id|Unique identifier for the request| Required |
+
+###### Response
+| Key          | Value                                                  | Required |
+|:-------------|--------------------------------------------------------|----------|
+|X-Response-Id |Unique identifier for the response same as X Request Id | Required |
+
+### Error Response Format
+If there is any problem to process the request properly, service would return the error with the HTTP status code and messages in response body as below.
+#### HTTP status table
+Use HTTP status codes to indicate success or failure.
+| Status | Description            |
+|:-------|------------------------|
+| `200`  | OK                     |
+| `201`  | Created                |
+| `202`  | Accepted               |
+| `204`  | No Content             |
+| `301`  | Redirect               |
+| `400`  | Bad Request            |
+| `401`  | Unauthorized           |
+| `403`  | Forbidden              |
+| `404`  | Not Found              |
+| `406`  | Not Acceptable         |
+| `408`  | Request Timeout        |
+| `409`  | Conflict               |
+| `410`  | Gone                   |
+| `415`  | Unsupported Media Type |
+| `421`  | Unattested             |
+| `500`  | Internal Server Error  |
+| `501`  | Not Implemented        |
+| `503`  | Service Not Available  |
+
+#### Error Message Format
+| Key           | Type   | Value                                                                           | Required |
+|:--------------|--------|---------------------------------------------------------------------------------|----------|
+| ResultCode    | String | Error code defined in Service. Formatted as *OPM{severity}N{code}*              | Required |
+| ResultMessage | String | Description of the cause of this error *Mandatory header x-smps-cc2 is missing* | Required |
+
+# Group 1. Transactions
+The interfaces are available to make transactions and process payments.
+
+## 1.1 Transactions [/transactions]
+### Create Transactions [POST]
+###### POST `/ops/v1/transactions`
+This interface allows consumers to create Samsung pay transaction object which will be paid by user. When the consumer calls this interface, Samsung pay server will authenticate and authorize the consumer. If the consumer is verified successfully, Samsung pay server will create this resource and returns the identifier. The identifier will be passed to user (application) to be confirmed and paid.
+
++ Request (application/json)
+
+    + Headers
+    
+            X-Request-Id: f641e859-7152-4ea2-b79b-sdf2e40510b5
+
+    + Attributes
+        + callback: `https://merchant.host.endpoint/order/ord001/result` - Callback URL (Required)
+        + paymentDetails - Container of payment details (Required)
+            + service (object)
+                + id: `8e91bfa4bb8c496199adf8` - Service Identifier (Required)
+            + orderNumber: `DSTRF345789dsgTY` - Allowed characters: [A-Z][a-z][0-9,-] / Max 36 characters (Conditional: Transaction for payment)
+            + recurring: `false` (boolean) - Enablement of recurring (Optional)
+            + protocol - Container of payment protocol (Conditional: Transaction for payment)
+                + type: `3DS` - Payment protocol type (Required)
+                + version: `80` - Payment protocol version (Required)
+            + amount - Container of amount (Conditional: Transaction for payment)
+                + option: `FORMAT_TOTAL_ESTIMATED_AMOUNT` - (Optional)
+                        FORMAT_TOTAL_ESTIMATED_AMOUNT: Option to display "Total (Estimated amount)" with price value for total amount on payment sheet. 
+                        FORMAT_TOTAL_PRICE_ONLY: Option to display price value only for total amount on custom payment sheet. 
+                + currency: `USD` - Currency code(ISO 4217) (Required)
+                + total: `300`
+            + merchant
+                + name: `virtual shop` - Merchant name (Required)
+                + reference: `xn7qfnd` - Merchant reference (Optional)
+                + url: `virtualshop.com` - Merchant domain URL (Required)
+            + allowedBrands (array[string]) - Allowed card brands. Specifies card brands accepted by the merchant. If no brand is specified, all brands are accepted by default. If at least one brand is specified, all other card brands not specified will be set to "card not supported’ on the payment sheet.
+                + VC
+                + MC
+                + AX
+                + DS 
+                + CUP 
+                + OC 
+                + ECI
+        + features (array) - Supporting features (Optional)
+            + (object)
+                + id: `SOAPP` - COMBOCARD / DSRP / SOAPP (Required)
+                + type: `PAY_WITH_PROFILE` - (Required)
+                        COMBOCARD: CREDIT/DEBIT
+                        DSRP: UCAF/ICC
+                        SOAPP: PAY/PAY_WITH_PROFILE/PROFILE
+                + option (array[string]) - Features optional value list (Conditional: SOAPP - User profiles)
+                    + NAME
+                    + FIRST_NAME
+                    + LAST_NAME
+                    + EMAIL
+                    + TEL
+                    + BILLING_ADDRESS
+                    + SHIPPING_ADDRESS
+                    + DATE_OF_BIRTH
+                    + IMEI
+                    + MODEL_NAME
+                    
+    
++ Response 200 (application/json)
+  
+    + Headers
+    
+            X-Response-Id: f641e859-7152-4ea2-b79b-sdf2e40510b5
+  
+    + Attributes
+        + resultCode: `0` - Result Code (Required)
+        + resultMessage: `SUCCESS` - Result Message (Required)
+        + id: `2b223e9501cc4958852736` - Transaction Identifier (Required)
+        + href: `https://us-online.stg.mpay.samsung.com/onlinepay` - Resource href(Web URL) for account binding (Required)
+        + encInfo
+            + keyId: `a77514e4e417e3cfd86b1066ae67c9817b81d0447d1afa2b4705396f3973a3c102b1a303418a776f7dc9d71db192b2709c5f7d1738d5aa37f654332511165af2_2805a5fb89924084a121` - RSA private key ID (Required)
+            + mod: `803cc2b083296ec3003ccca8583fbb3acdffbb00da2d07c2fe3e12cbee10ec1fbbd85fd58e002c1d00f552857afa3f3d679f4600d5d405dbcf98294112d409b8cb1372de810a17c6fe601df04f7bf659320c840ef5d076145aa1fb01c973e6c3a83dd2e0231cec26c3afae6226356559088beda2603912d5619a0b8d874ed280e305bda50636c2d100526ccdfdc0df32d4cc78b7cce51039cf588da4d7f1a3a91c99426d35dbe27d414d279385b4d754492a541a5796fcde495910e9700043825582e8e51508cce00e5527f7a64b1410db238eec1c2fa07fdf06b77776e75477d5343865ec3125133977748145ea7791dae254ccf2018fd6ecf2badb6b854dcd` - RSA public key - modulus (Required)
+            + exp: `10001` - RSA public key - exponent (Required)
+        
++ Response 400 (application/json)
+
+    + Body
+    
+            {"resultCode": "OPM1N1001", "resultMessage": "callback parameter value is invalid"}
+
++ Response 404 (application/json)
+
+    + Body
+    
+            {"resultCode": "OPM1N1035", "resultMessage": "Service 8e91bfa4bb8c496199adf8 is not exist"}
+
++ Response 409 (application/json)
+
+    + Body
+    
+            {"resultCode": "OPM2N1103", "resultMessage": "This transaction already bound to device"}
+
++ Response 500 (application/json)
+
+    + Body
+    
+            {"resultCode": "OPM5N9001", "resultMessage": "DB data processing error"}
+
+## 1.2 Payment Credential [/transactions/paymentCredentials/{id}?serviceId={serviceId}]
+
++ Parameters
+    
+    + id: `8e91bfa4bb8c496199adf8` (string)
+    + serviceId: `7bbc62da48664b11bf80c9` (string)
+        
+### Get Payment Credential [GET]
+###### GET `/ops/v1/transactions/paymentCredentials/{id}?serviceId={serviceId}`
+This interface allows consumers to create Samsung pay transaction object which will be paid by user. When the consumer calls this interface, Samsung pay server will authenticate and authorize the consumer. If the consumer is verified successfully, Samsung pay server will create this resource and returns the identifier. The identifier will be passed to user (application) to be confirmed and paid.
+
++ Request (application/json)
+    
+    + Headers
+
+            X-Request-Id: f641e859-7152-4ea2-b79b-sdf2e40510b5
+   
++ Response 200 (application/json)
+
+    + Headers
+
+            X-Response-Id: f641e859-7152-4ea2-b79b-sdf2e40510b5
+
+    + Attributes
+        + resultCode: `0` - Result Code (Required)
+        + resultMessage: `SUCCESS` - Result Message (Required)
+        + wallet_dm_id: `6aa23s9571c149sb8522hq` - Unique Identifier of users' device (Required)
+        + method: `3DS` - Inputted payment protocol (Conditional: Transaction for Payment)
+        + card_last4digits: `1234` - Last 4 digit of FPAN (Optional)
+        + 3DS - Transaction 3DS data object (Conditional: Transaction for Payment)
+            + type: `S` - 3DS Type (Required)
+            + version: `100` - current version (Required)
+            + data: `yJhbGciOiJSU0EtT0FFUCIsImVuYyI6IkEyNTZHQ00ifQ.OKOawDo13gRp2oj.48V1ALb6US04U3b.5eym8TW_c8SuK0ltJ3rpYIzOeDQz7TALvtu6UG9oMo4vpzs9tXA.XFBoMYUZodetZdvTiFvSkQ` - Encrypted payment credential data (Required)
+        + certificates (array) - Certificate array (Conditional: Transaction for Payment)
+            + (object) 
+                + usage: `CA` - CA / VER (Required)
+                + alias: `ca_cert` - Certificate alias (Required)
+                + content: `-----BEGIN CERTIFICATE----- ... -----END CERTIFICATE-----` - Certificate content (Required)
+        + features (array) - Supporting features (Optional)
+            + (object) - Feature (Conditional: Transaction for Payment)
+                + id: `COMBOCARD` - COMBOCARD / DSRP / SOAPP (Required)
+                + type: `DEBIT` - (Required)
+                        COMBOCARD: CREDIT/DEBIT
+                        DSRP: UCAF/ICC
+                        SOAPP: PAY/PAY_WITH_PROFILE/PROFILE
+                + data: `sdlhfWRioqwhegoiU0EtT0FFUCIsIAWEIHweihweoAYAiwef0ifQ.OKOawDo13gRp2oj.48V1ALb6US04U3b.5eym8TW_c8SuK0ltJ3rpYIzOeDQz7TALvtu6UG9oMo4vpzs9tXA.dgjoahngaw/GhaAEYUFWAa` - Feature data (Conditional: SOAPP- Encrypted user profile data)
+                            
++ Response 400 (application/json)
+
+    + Body
+    
+            {"resultCode": "OPM1N1001", "resultMessage": "callback parameter value is invalid"}
+
++ Response 404 (application/json)
+
+    + Body
+    
+            {"resultCode": "OPM1N1035", "resultMessage": "Service 8e91bfa4bb8c496199adf8 is not exist"}
+
++ Response 500 (application/json)
+
+    + Body
+    
+            {"resultCode": "OPM5N9001", "resultMessage": "DB data processing error"}
+
+# Group 2. Notification
+## 2.1 Post Notification [/notification]
+### Post Notification [POST]
+###### POST `/ops/v1/notification`
+PG can notify the final result or status of the transaction thorough this interface after the transaction is finally processed with network, or during the transaction is processed. Status can be one of CHARGED, CANCELED, REJECTED, TIMEOUT, ERRED.
+
++ Request (application/json)
+
+    + Headers
+    
+            X-Request-Id: f641e859-7152-4ea2-b79b-sdf2e40510b5
+
+    + Attributes
+        + payment - Container of Payment (Required)
+            + service - Container of Service (Required)
+                + id: `7bbc62da48664b11bf80c9` - Service ID given to consumer (Required)
+            + reference: `667ae458c01b4d95bdc76af81e3cd11e` - Payment reference which has been used in transaction. This will be passed to callback url of SamsungPay web script to get payment credential and notification. (Required)
+            + status: `CHARGED` - (Required)
+                        CHARGED: Payment was charge successfully.
+                        CANCELED: Payment was canceled by user or merchant or acquirer.
+                        REJECTED: Payment was rejected by acquirer.
+                        TIMEOUT: Payment was timeout during payment process
+                        ERRER: Error was occured during payment process.
+            + provider: `Samsung.com` - Payment provider(PG) name (Optional)
+            + merchant - Container of Merchant
+                + name: `Samsung Shop` - Merchant name (Optional)
+                + reference: `xn7qfnd` - Merchant(PG) reference (Optional)
+                + timestamp: `1602663864184` - Timestamp (Required)
+    
+    
++ Response 200 (application/json)
+  
+    + Headers
+    
+            X-Response-Id: f641e859-7152-4ea2-b79b-sdf2e40510b5
+  
+    + Attributes
+        + resultCode: `0` - Result Code (Required)
+        + resultMessage: `SUCCESS` - Result Message (Required)
